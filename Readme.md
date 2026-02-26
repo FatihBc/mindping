@@ -1,0 +1,7 @@
+## MindPing Uygulaması
+- Öncelikle özgün bir isim bulalım. Appstore v android markette olmamalı, aklıma gelenleri ben listeleyeyim. Uygun olup olmadığına bak ve senin önerin varsa bana söyle.
+- Basit bir uygulama olacak. Backend ve db olmayacak. Veriler her kullanıcının kendi telefonunda olacak. Uygulama temel olarak kişilerin karşılıklı etkileşimine dayandığından db ve backend şartı varsa sadece kullanıcı adlarını ve en gerekli bilgileri kaydetmek için kullanacağız. Örneğin kullanıcı adı, şifre.
+- Prpfil fotoğrafı veya simge, emoji konulsa da bu bilgi yine kişinin lokalinde yer alsın, kişi karşısı ile paylaşılmasını istiyorsa paylaşabilir. Fakat bu profil fotoğrafı db ye kayıt edilmemeli. Kişisel verilerin ihlal edilmemesi gerekiyor.
+- Uygulamada kişi listesi olacak. Bu kişileri uygulamayı kullanan kişi diğer kişilerin kullanıcı adları ile ekleyebilecek. Kişilerin birbirini eklemesi NFC, bluetooth veya QR kod ile olabilir. Senin önerin ne olur?
+- Uygulamada kişiler birbirlerine sadece dürtme gönderecek. "Aklımdasın" gibi bir bildirim gönderecek. Bu bildirimler kişilerinde lokalinde saklanacak ve son 1 hafta günlük olarak bildirim sayısını gösterecek şekilde bir grafik ile gösterilecek. aynı grafikte kendisini de etkileşimde olduğu kişiyi de görebilecek.
+Şimdilik bu kadar aklıma gelen. Senin önerin de olursa bana söyle. Nasıl plan yapalım düşün ve konuşalım. Hemen başlama.
