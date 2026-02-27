@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { View, FlatList, StyleSheet, RefreshControl } from 'react-native';
+import { View, FlatList, StyleSheet, RefreshControl, Alert } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import {
   List,
@@ -11,11 +11,10 @@ import {
   Appbar,
 } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import { getFriends, getCurrentUser, removeFriend, updateFriends } from '../../src/services/storage';
+import { getFriends, getCurrentUser, removeFriend, updateFriends, savePing, getPingsBetweenUsers } from '../../src/services/storage';
 import { logoutUser, deleteUserAccount, getCurrentAuthUser, resendEmailVerification } from '../../src/services/auth';
 import { changeLanguage, getAvailableLanguages } from '../../src/i18n';
 import { Avatar } from '../../src/components/Avatar';
-import { Alert } from 'react-native';
 import { useIncomingPings } from '../../src/hooks/useIncomingPings';
 import { colors } from '../../src/theme/colors';
 import { useTheme } from '../../src/context/ThemeContext';
@@ -85,6 +84,43 @@ export default function FriendsScreen() {
     );
   };
 
+  const handleSendPing = async (friend: Friend) => {
+    if (!currentUser) return;
+
+    // Check last ping time (30 minute cooldown)
+    const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
+    const recentPings = await getPingsBetweenUsers(currentUser.id, friend.id, thirtyMinutesAgo);
+    const lastSentPing = recentPings
+      .filter((p: any) => p.senderId === currentUser.id)
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)[0];
+
+    if (lastSentPing) {
+      const minutesLeft = Math.ceil((lastSentPing.timestamp + 30 * 60 * 1000 - Date.now()) / 60000);
+      Alert.alert(
+        'Çok Erken! ⏰',
+        `${friend.displayName} kişisine ${minutesLeft} dakika sonra tekrar ping gönderebilirsiniz.`,
+        [{ text: 'Tamam' }]
+      );
+      return;
+    }
+
+    const ping = {
+      id: Date.now().toString(),
+      senderId: currentUser.id,
+      receiverId: friend.id,
+      timestamp: Date.now(),
+      message: 'Aklımdasın',
+    };
+
+    await savePing(ping);
+
+    Alert.alert(
+      'Ping Gönderildi! 💌',
+      `${friend.displayName} kişisine ping gönderildi.`,
+      [{ text: 'Tamam' }]
+    );
+  };
+
   const renderFriend = ({ item, index }: { item: Friend; index: number }) => {
     const pingCount = getPingCountForFriend(item.id);
     return (
@@ -132,7 +168,7 @@ export default function FriendsScreen() {
                   <IconButton
                     icon="send"
                     size={24}
-                    onPress={() => router.push(`/ping/${item.id}`)}
+                    onPress={() => handleSendPing(item)}
                     iconColor={colors.primary[600]}
                   />
                 </>

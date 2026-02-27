@@ -92,6 +92,8 @@ export const addPing = async (ping: Ping): Promise<void> => {
   await AsyncStorage.setItem(KEYS.PINGS, JSON.stringify([...pings, ping]));
 };
 
+export const savePing = addPing;
+
 export const getPingsBetweenUsers = async (
   userId1: string,
   userId2: string,

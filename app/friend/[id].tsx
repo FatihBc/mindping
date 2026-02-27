@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Text, Surface, IconButton } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +7,7 @@ import {
   getFriends,
   getPingsBetweenUsers,
   getCurrentUser,
+  savePing,
 } from '../../src/services/storage';
 import { Avatar } from '../../src/components/Avatar';
 import { colors } from '../../src/theme/colors';
@@ -49,6 +50,50 @@ export default function FriendDetailScreen() {
       await loadTodayStats(found.id);
       await loadWeekStats(found.id);
     }
+  };
+
+  const handleSendPing = async () => {
+    if (!friend) return;
+
+    const currentUser = await getCurrentUser();
+    if (!currentUser) return;
+
+    // Check last ping time (30 minute cooldown)
+    const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
+    const recentPings = await getPingsBetweenUsers(currentUser.id, friend.id, thirtyMinutesAgo);
+    const lastSentPing = recentPings
+      .filter(p => p.senderId === currentUser.id)
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+
+    if (lastSentPing) {
+      const minutesLeft = Math.ceil((lastSentPing.timestamp + 30 * 60 * 1000 - Date.now()) / 60000);
+      Alert.alert(
+        'Çok Erken! ⏰',
+        `${friend.displayName} kişisine ${minutesLeft} dakika sonra tekrar ping gönderebilirsiniz.`,
+        [{ text: 'Tamam' }]
+      );
+      return;
+    }
+
+    const ping = {
+      id: Date.now().toString(),
+      senderId: currentUser.id,
+      receiverId: friend.id,
+      timestamp: Date.now(),
+      message: 'Aklımdasın',
+    };
+
+    await savePing(ping);
+
+    Alert.alert(
+      'Ping Gönderildi! 💌',
+      `${friend.displayName} kişisine ping gönderildi.`,
+      [{ text: 'Tamam' }]
+    );
+
+    // Reload stats to show the new ping
+    await loadTodayStats(friend.id);
+    await loadWeekStats(friend.id);
   };
 
   const loadTodayStats = async (friendId: string) => {
@@ -109,9 +154,9 @@ export default function FriendDetailScreen() {
       const dayStart = date.getTime();
       const dayEnd = dayStart + 24 * 60 * 60 * 1000;
 
-      const dateStr = date.toLocaleDateString(i18n.language, { 
-        month: 'short', 
-        day: 'numeric' 
+      const dateStr = date.toLocaleDateString(i18n.language, {
+        month: 'short',
+        day: 'numeric'
       });
       const dayName = date.toLocaleDateString(i18n.language, { weekday: 'short' });
 
@@ -167,7 +212,7 @@ export default function FriendDetailScreen() {
           <IconButton
             icon="send"
             size={32}
-            onPress={() => router.push(`/ping/${friend.id}`)}
+            onPress={handleSendPing}
             iconColor={isDark ? '#da0000' : '#780000'}
             style={styles.pingButton}
           />
@@ -243,41 +288,85 @@ export default function FriendDetailScreen() {
           </View>
         </Surface>
 
-        {/* Last 7 Days Stats */}
+        {/* Last 7 Days Stats - Bar Chart */}
         <Surface style={[styles.weekCard, { backgroundColor: theme.card }]} elevation={1}>
           <Text variant="titleMedium" style={[styles.weekTitle, { color: theme.text }]}>
             Son 7 Gün
           </Text>
-          {weekStats.map((day, index) => (
-            <View key={index} style={[styles.dayRow, { borderBottomColor: theme.border }]}>
-              <View style={styles.dayInfo}>
-                <Text variant="bodyMedium" style={{ color: theme.text }}>
-                  {day.day}
-                </Text>
-                <Text variant="bodySmall" style={{ color: theme.textSecondary }}>
-                  {day.date}
-                </Text>
-              </View>
-              <View style={styles.dayStats}>
-                <View style={styles.dayStat}>
-                  <Text style={{ color: isDark ? '#da0000' : '#780000', fontSize: 16, fontWeight: '600' }}>
-                    {day.sent}
-                  </Text>
-                  <Text variant="bodySmall" style={{ color: theme.textSecondary }}>
-                    Gönderilen
-                  </Text>
-                </View>
-                <View style={styles.dayStat}>
-                  <Text style={{ color: '#3b82f6', fontSize: 16, fontWeight: '600' }}>
-                    {day.received}
-                  </Text>
-                  <Text variant="bodySmall" style={{ color: theme.textSecondary }}>
-                    Alınan
-                  </Text>
-                </View>
-              </View>
+
+          {/* Legend */}
+          <View style={styles.legend}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, { backgroundColor: isDark ? '#da0000' : '#780000' }]} />
+              <Text variant="bodySmall" style={{ color: theme.textSecondary }}>Gönderilen</Text>
             </View>
-          ))}
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, { backgroundColor: '#3b82f6' }]} />
+              <Text variant="bodySmall" style={{ color: theme.textSecondary }}>Alınan</Text>
+            </View>
+          </View>
+
+          {/* Bar Chart */}
+          <View style={styles.chartContainer}>
+            {weekStats.map((day, index) => {
+              const maxValue = Math.max(...weekStats.map(d => d.sent + d.received), 1);
+              const sentHeight = (day.sent / maxValue) * 120;
+              const receivedHeight = (day.received / maxValue) * 120;
+
+              return (
+                <View key={index} style={styles.barWrapper}>
+                  <View style={styles.barColumn}>
+                    {/* Stacked bar */}
+                    <View style={styles.barStack}>
+                      {day.sent > 0 && (
+                        <View
+                          style={[
+                            styles.barSegment,
+                            {
+                              height: sentHeight,
+                              backgroundColor: isDark ? '#da0000' : '#780000',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }
+                          ]}
+                        >
+                          {sentHeight > 20 && (
+                            <Text style={styles.segmentText}>
+                              {day.sent}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                      {day.received > 0 && (
+                        <View
+                          style={[
+                            styles.barSegment,
+                            {
+                              height: receivedHeight,
+                              backgroundColor: '#3b82f6',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }
+                          ]}
+                        >
+                          {receivedHeight > 20 && (
+                            <Text style={styles.segmentText}>
+                              {day.received}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Day label */}
+                  <Text variant="bodySmall" style={[styles.dayLabel, { color: theme.textSecondary }]}>
+                    {day.day}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
         </Surface>
       </ScrollView>
     </View>
@@ -387,6 +476,61 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 16,
     textAlign: 'center',
+  },
+  legend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 24,
+    marginBottom: 20,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  legendColor: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+  },
+  chartContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    height: 160,
+    paddingHorizontal: 8,
+  },
+  barWrapper: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  barColumn: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: 140,
+  },
+  barTotal: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  barStack: {
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  barSegment: {
+    width: '100%',
+    borderRadius: 4,
+  },
+  segmentText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  dayLabel: {
+    marginTop: 8,
+    fontSize: 11,
   },
   dayRow: {
     flexDirection: 'row',
