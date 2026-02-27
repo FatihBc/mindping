@@ -17,6 +17,13 @@ export default function SplashScreen() {
       try {
         const unsubscribe = onAuthStateChange(async (firebaseUser) => {
           if (firebaseUser) {
+            // Check if email is verified
+            if (!firebaseUser.emailVerified) {
+              router.replace('/auth');
+              setLoading(false);
+              return;
+            }
+
             const localUser = await getCurrentUser();
             if (!localUser) {
               router.replace('/setup');

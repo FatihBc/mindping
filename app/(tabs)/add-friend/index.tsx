@@ -7,19 +7,22 @@ import {
   Surface,
   TextInput,
   SegmentedButtons,
-  Appbar,
+  IconButton,
 } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import QRCode from 'react-native-qrcode-svg';
 import { getCurrentUser, addFriend, getFriends, findUserByUsername, findUserByFriendCode } from '@/services/storage';
+import { colors } from '../../../src/theme/colors';
+import { useTheme } from '../../../src/context/ThemeContext';
 import type { User } from '@/types/index';
-import '../../src/i18n';
+import '../../../src/i18n';
 
 type Mode = 'scan' | 'mycode';
 
 export default function AddFriendScreen() {
   const { t } = useTranslation();
+  const { theme, isDark } = useTheme();
   const [mode, setMode] = useState<Mode>('scan');
   const [scanned, setScanned] = useState(false);
   const [manualUsername, setManualUsername] = useState('');
@@ -165,106 +168,124 @@ export default function AddFriendScreen() {
 
   if (!permission?.granted && mode === 'scan') {
     return (
-      <View style={styles.container}>
-        <Text style={styles.permissionText}>
-          {t('cameraPermissionRequired')}
-        </Text>
-        <Button onPress={requestPermission} mode="contained">
-          {t('grantPermission')}
-        </Button>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <Surface style={[styles.headerCard, { backgroundColor: colors.primary[800] }]} elevation={2}>
+          <Text variant="titleLarge" style={styles.headerTitle}>
+            Arkadaş Ekle
+          </Text>
+        </Surface>
+        <View style={styles.content}>
+          <Text style={[styles.permissionText, { color: theme.text }]}>
+            {t('cameraPermissionRequired')}
+          </Text>
+          <Button
+            onPress={requestPermission}
+            mode="contained"
+            buttonColor={isDark ? '#da0000' : '#780000'}
+          >
+            {t('grantPermission')}
+          </Button>
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Appbar.Header>
-        <Appbar.BackAction onPress={() => router.back()} />
-        <Appbar.Content title="Arkadaş Ekle" />
-      </Appbar.Header>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Burgundy Header */}
+      <Surface style={[styles.headerCard, { backgroundColor: colors.primary[800] }]} elevation={2}>
+        <Text variant="titleLarge" style={styles.headerTitle}>
+          Arkadaş Ekle
+        </Text>
+      </Surface>
 
-      <SegmentedButtons
-        value={mode}
-        onValueChange={(v) => {
-          setMode(v as Mode);
-          setScanned(false);
-        }}
-        buttons={[
-          { value: 'scan', label: 'Tara' },
-          { value: 'mycode', label: 'Kodum' },
-        ]}
-        style={styles.segmented}
-      />
+      <View style={styles.content}>
+        <SegmentedButtons
+          value={mode}
+          onValueChange={(v) => {
+            setMode(v as Mode);
+            setScanned(false);
+          }}
+          buttons={[
+            { value: 'scan', label: 'Tara', style: { backgroundColor: mode === 'scan' ? '#ffcccc' : 'transparent' } },
+            { value: 'mycode', label: 'Kodum', style: { backgroundColor: mode === 'mycode' ? '#ffcccc' : 'transparent' } },
+          ]}
+          style={styles.segmented}
+        />
 
-      {mode === 'scan' ? (
-        <View style={styles.scanContainer}>
-          <CameraView
-            style={styles.camera}
-            facing="back"
-            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-            barcodeScannerSettings={{
-              barcodeTypes: ['qr'],
-            }}
-          />
-          <Surface style={styles.overlay} elevation={1}>
-            <Text variant="bodyMedium">
-              Arkadaşınızın QR kodunu kameraya gösterin
-            </Text>
-          </Surface>
-
-          <Surface style={styles.manualSection} elevation={1}>
-            <Text variant="bodySmall" style={styles.orText}>
-              veya kullanıcı adı / arkadaş kodu ile ekle
-            </Text>
-            <TextInput
-              label="Kullanıcı Adı veya Kod (ABC123)"
-              value={manualUsername}
-              onChangeText={setManualUsername}
-              style={styles.manualInput}
-              autoCapitalize="characters"
+        {mode === 'scan' ? (
+          <View style={styles.scanContainer}>
+            <CameraView
+              style={styles.camera}
+              facing="back"
+              onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+              barcodeScannerSettings={{
+                barcodeTypes: ['qr'],
+              }}
             />
-            <Button
-              mode="outlined"
-              onPress={handleManualAdd}
-              disabled={!manualUsername.trim()}
-            >
-              Ekle
-            </Button>
-          </Surface>
+            <Surface style={[styles.overlay, { backgroundColor: theme.card }]} elevation={1}>
+              <Text variant="bodyMedium" style={{ color: theme.text }}>
+                Arkadaşınızın QR kodunu kameraya gösterin
+              </Text>
+            </Surface>
 
-          {scanned && (
-            <Button
-              mode="contained"
-              onPress={() => setScanned(false)}
-              style={styles.scanAgain}
-            >
-              Tek Tara
-            </Button>
-          )}
-        </View>
-      ) : (
-        <Surface style={styles.myCodeContainer} elevation={2}>
-          <Text variant="titleMedium" style={styles.myCodeTitle}>
-            Arkadaşların bu kodu tarasın
-          </Text>
-          {myQrData ? (
-            <View style={styles.qrWrapper}>
-              <QRCode value={myQrData} size={200} />
-            </View>
-          ) : null}
-          <Text variant="bodyMedium" style={styles.username}>
-            @{currentUser?.username}
-          </Text>
-          <View style={styles.codeContainer}>
-            <Text variant="bodySmall" style={styles.codeLabel}>
-              Arkadaş Kodun:
-            </Text>
-            <Text variant="headlineMedium" style={styles.friendCodeDisplay}>
-              {currentUser?.friendCode || '...'}
-            </Text>
+            <Surface style={[styles.manualSection, { backgroundColor: theme.card }]} elevation={1}>
+              <Text variant="bodySmall" style={[styles.orText, { color: theme.textSecondary }]}>
+                veya kullanıcı adı / arkadaş kodu ile ekle
+              </Text>
+              <TextInput
+                label="Kullanıcı Adı veya Kod (ABC123)"
+                value={manualUsername}
+                onChangeText={setManualUsername}
+                autoCapitalize="characters"
+                textColor={theme.text}
+                mode="outlined"
+                outlineColor="#ffcccc"
+                activeOutlineColor="#ffcccc"
+                style={[styles.manualInput, { backgroundColor: '#ffcccc' }]}
+              />
+              <Button
+                mode="contained"
+                onPress={handleManualAdd}
+                disabled={!manualUsername.trim()}
+                buttonColor={isDark ? '#da0000' : '#780000'}
+              >
+                Ekle
+              </Button>
+            </Surface>
+
+            {scanned && (
+              <Button
+                mode="contained"
+                onPress={() => setScanned(false)}
+                style={styles.scanAgain}
+                buttonColor={isDark ? '#da0000' : '#780000'}
+              >
+                Tekrar Tara
+              </Button>
+            )}
           </View>
-        </Surface>
-      )}
+        ) : (
+          <Surface style={[styles.myCodeContainer, { backgroundColor: theme.card }]} elevation={2}>
+            <Text variant="titleMedium" style={[styles.myCodeTitle, { color: theme.text }]}>
+              Arkadaşınız sizi eklemek için bu kodu tarayabilir
+            </Text>
+            {myQrData ? (
+              <View style={styles.qrWrapper}>
+                <QRCode value={myQrData} size={200} />
+              </View>
+            ) : null}
+            <View style={styles.codeContainer}>
+              <Text variant="bodySmall" style={[styles.codeLabel, { color: theme.textSecondary }]}>
+                Arkadaş Kodun:
+              </Text>
+              <Text variant="headlineMedium" style={[styles.friendCodeDisplay, { color: isDark ? '#da0000' : '#780000' }]}>
+                {currentUser?.friendCode || '...'}
+              </Text>
+            </View>
+          </Surface>
+        )}
+      </View>
     </View>
   );
 }
@@ -272,7 +293,22 @@ export default function AddFriendScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+  },
+  headerCard: {
+    paddingTop: 60,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    alignItems: 'center',
+  },
+  headerTitle: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 20,
+  },
+  content: {
+    flex: 1,
     padding: 16,
   },
   segmented: {

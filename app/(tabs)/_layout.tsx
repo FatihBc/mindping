@@ -19,6 +19,9 @@ export default function TabsLayout() {
           : {
             backgroundColor: '#470000',
             borderTopWidth: 0,
+            height: 80,
+            paddingBottom: 10,
+            paddingTop: 10,
           },
       }}
     >
@@ -29,6 +32,27 @@ export default function TabsLayout() {
           headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people" size={size} color={color} />
+          ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            if (isEditMode) {
+              e.preventDefault();
+              Alert.alert(
+                'Düzenleme Modu Aktif',
+                'Sekme değiştirmeden önce lütfen düzenlemeyi kaydedin veya iptal edin.'
+              );
+            }
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="add-friend/index"
+        options={{
+          title: '',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="add" size={size + 4} color={color} />
           ),
         }}
         listeners={{

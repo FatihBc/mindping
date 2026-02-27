@@ -1,14 +1,16 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { View, FlatList, StyleSheet, RefreshControl, Alert } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import {
   List,
-  FAB,
   Text,
   Surface,
   IconButton,
   Badge,
   Appbar,
+  Dialog,
+  Portal,
+  Button,
 } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { getFriends, getCurrentUser, removeFriend, updateFriends, savePing, getPingsBetweenUsers } from '../../src/services/storage';
@@ -18,7 +20,7 @@ import { Avatar } from '../../src/components/Avatar';
 import { useIncomingPings } from '../../src/hooks/useIncomingPings';
 import { colors } from '../../src/theme/colors';
 import { useTheme } from '../../src/context/ThemeContext';
-import type { Friend, User } from '../../src/types/index';
+import type { Friend, User, Notification } from '../../src/types/index';
 import '../../src/i18n/index';
 
 export default function FriendsScreen() {
@@ -28,6 +30,9 @@ export default function FriendsScreen() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showNotificationDialog, setShowNotificationDialog] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const { unreadPings, unreadCount, markFriendPingsAsRead } = useIncomingPings();
 
   // Calculate ping count per friend
@@ -36,8 +41,10 @@ export default function FriendsScreen() {
   };
 
   const loadData = async () => {
-    setFriends(await getFriends());
-    setCurrentUser(await getCurrentUser());
+    const user = await getCurrentUser();
+    setCurrentUser(user);
+    const friendsList = await getFriends();
+    setFriends(friendsList);
   };
 
   useFocusEffect(
@@ -45,6 +52,74 @@ export default function FriendsScreen() {
       loadData();
     }, [])
   );
+
+  // Listen to account deletion notifications
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const setupNotificationListener = async () => {
+      const { listenToNotifications } = await import('../../src/services/firebase-db');
+      const unsubscribe = listenToNotifications(currentUser.id, (newNotifications) => {
+        setNotifications(newNotifications);
+        // Auto-show dialog for first notification
+        if (newNotifications.length > 0 && !showNotificationDialog) {
+          setSelectedNotification(newNotifications[0]);
+          setShowNotificationDialog(true);
+        }
+      });
+
+      return unsubscribe;
+    };
+
+    const unsubscribePromise = setupNotificationListener();
+
+    return () => {
+      unsubscribePromise.then((unsubscribe) => unsubscribe && unsubscribe());
+    };
+  }, [currentUser?.id]);
+
+  const handleDismissNotification = async () => {
+    if (!selectedNotification) return;
+
+    try {
+      const { markNotificationAsRead } = await import('../../src/services/firebase-db');
+      await markNotificationAsRead(selectedNotification.id);
+      setShowNotificationDialog(false);
+      setSelectedNotification(null);
+    } catch (error) {
+      console.error('Error dismissing notification:', error);
+    }
+  };
+
+  const handleRemoveFriend = async () => {
+    if (!selectedNotification) return;
+
+    try {
+      const { deleteNotification } = await import('../../src/services/firebase-db');
+
+      // Remove friend from local list
+      await removeFriend(selectedNotification.deletedUserId);
+
+      // Delete notification
+      await deleteNotification(selectedNotification.id);
+
+      // Refresh friends list
+      const friendsList = await getFriends();
+      setFriends(friendsList);
+
+      setShowNotificationDialog(false);
+      setSelectedNotification(null);
+
+      Alert.alert(
+        'Arkadaş Silindi',
+        `${selectedNotification.deletedDisplayName} arkadaş listenizden kaldırıldı.`,
+        [{ text: 'Tamam' }]
+      );
+    } catch (error) {
+      console.error('Error removing friend:', error);
+      Alert.alert('Hata', 'Arkadaş silinirken bir hata oluştu');
+    }
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -237,14 +312,31 @@ export default function FriendsScreen() {
         }
       />
 
-      {!isEditMode && (
-        <FAB
-          icon="qrcode-scan"
-          style={[styles.fab, { backgroundColor: colors.primary[600] }]}
-          onPress={() => router.push('/add-friend')}
-          label={t('addFriend')}
-        />
-      )}
+      <Portal>
+        <Dialog
+          visible={showNotificationDialog}
+          onDismiss={handleDismissNotification}
+          style={{ backgroundColor: theme.dialogBackground, borderColor: theme.dialogBorder, borderWidth: 2 }}
+        >
+          <Dialog.Title style={{ color: theme.dialogText }}>Hesap Silindi</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium" style={{ color: theme.dialogText }}>
+              {selectedNotification?.deletedDisplayName} (@{selectedNotification?.deletedUsername}) hesabını sildi.
+            </Text>
+            <Text variant="bodyMedium" style={{ color: theme.dialogText, marginTop: 12 }}>
+              Bu kişiyi arkadaş listenizden kaldırmak ister misiniz?
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={handleDismissNotification} textColor={theme.dialogText}>
+              Şimdi Değil
+            </Button>
+            <Button onPress={handleRemoveFriend} textColor={colors.error}>
+              Arkadaşlarımdan Sil
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </View>
   );
 }
@@ -317,10 +409,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
     opacity: 0.6,
-  },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 16,
   },
 });

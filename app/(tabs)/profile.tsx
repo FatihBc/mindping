@@ -14,7 +14,7 @@ import {
   IconButton,
 } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import { getCurrentUser, updateUser, setCurrentUser, clearAllData } from '../../src/services/storage';
+import { getCurrentUser, updateUser, setCurrentUser, clearAllData, removeFriend } from '../../src/services/storage';
 import { logoutUser, deleteUserAccount, getCurrentAuthUser } from '../../src/services/auth';
 import { changeLanguage, getAvailableLanguages } from '../../src/i18n';
 import { Avatar } from '../../src/components/Avatar';
@@ -22,6 +22,7 @@ import { AVATAR_STYLES } from '../../src/types/index';
 import { colors } from '../../src/theme/colors';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useEditMode } from '../../src/context/EditModeContext';
+import { getUsersWhoAddedMe, getFriendships, sendAccountDeletionNotification } from '../../src/services/firebase-db';
 import '../../src/i18n/index';
 import QRCode from 'react-native-qrcode-svg';
 import type { User } from '../../src/types/index';
@@ -39,6 +40,8 @@ export default function ProfileScreen() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showQRDialog, setShowQRDialog] = useState(false);
   const [showAvatarGrid, setShowAvatarGrid] = useState(false);
+  const [showWhoAddedMeDialog, setShowWhoAddedMeDialog] = useState(false);
+  const [usersWhoAddedMe, setUsersWhoAddedMe] = useState<User[]>([]);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const languages = getAvailableLanguages();
 
@@ -106,17 +109,42 @@ export default function ProfileScreen() {
     }
 
     const firebaseUser = getCurrentAuthUser();
-    if (!firebaseUser) {
+    if (!firebaseUser || !user) {
       Alert.alert('Hata', 'Kullanıcı bulunamadı');
       return;
     }
 
-    const result = await deleteUserAccount();
-    if (result.success) {
-      await clearAllData();
-      router.replace('/auth');
-    } else {
-      Alert.alert('Hata', result.error || 'Hesap silinemedi');
+    try {
+      // Get friends list before deleting
+      const friendIds = await getFriendships(user.id);
+
+      // Send notifications to all friends
+      if (friendIds.length > 0) {
+        await sendAccountDeletionNotification(user, friendIds);
+      }
+
+      // Delete the account
+      const result = await deleteUserAccount(firebaseUser);
+      if (result.success) {
+        Alert.alert(
+          'Email Onayı Gerekli',
+          'Silme işleminin tamamlanması için size e-mail gönderilmiştir. Silmeyi onayladıktan sonra silme işlemi tamamlanacaktır.',
+          [
+            {
+              text: 'Tamam',
+              onPress: async () => {
+                await clearAllData();
+                router.replace('/auth');
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Hata', result.error || 'Hesap silinemedi');
+      }
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      Alert.alert('Hata', 'Hesap silinirken bir hata oluştu');
     }
   };
 
@@ -131,8 +159,81 @@ export default function ProfileScreen() {
         message: `MindPing arkadaş kodum: ${user?.friendCode}`,
       });
     } catch (error) {
-      console.error(error);
+      console.error('Error sharing:', error);
     }
+  };
+
+  const handleShowWhoAddedMe = async () => {
+    if (!user) return;
+
+    try {
+      const users = await getUsersWhoAddedMe(user.id);
+      setUsersWhoAddedMe(users);
+      setShowWhoAddedMeDialog(true);
+    } catch (error) {
+      console.error('Error loading users who added me:', error);
+      Alert.alert('Hata', 'Kullanıcılar yüklenirken bir hata oluştu');
+    }
+  };
+
+  const handleRemoveUserWhoAddedMe = async (userId: string, displayName: string) => {
+    Alert.alert(
+      'Arkadaşı Sil',
+      `${displayName} kişisini arkadaş listenizden silmek istediğinizden emin misiniz?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeFriend(userId);
+
+              // Refresh list
+              const users = await getUsersWhoAddedMe(user!.id);
+              setUsersWhoAddedMe(users);
+
+              Alert.alert('Başarılı', `${displayName} arkadaş listenizden silindi`);
+            } catch (error) {
+              console.error('Error removing user:', error);
+              Alert.alert('Hata', 'Kullanıcı silinirken bir hata oluştu');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleBlockUserWhoAddedMe = async (userId: string, displayName: string) => {
+    Alert.alert(
+      'Kullanıcıyı Engelle',
+      `${displayName} kişisini engellemek istediğinizden emin misiniz? Bu kişi size ping gönderemeyecek.`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Engelle',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // First remove from friends
+              await removeFriend(userId);
+
+              // TODO: Implement blocking functionality in Firebase
+              // For now, just remove from friends
+
+              // Refresh list
+              const users = await getUsersWhoAddedMe(user!.id);
+              setUsersWhoAddedMe(users);
+
+              Alert.alert('Başarılı', `${displayName} engellendi ve arkadaş listenizden silindi`);
+            } catch (error) {
+              console.error('Error blocking user:', error);
+              Alert.alert('Hata', 'Kullanıcı engellenirken bir hata oluştu');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const currentLang = languages.find((l: { code: string }) => l.code === i18n.language) || languages[0];
@@ -292,6 +393,19 @@ export default function ProfileScreen() {
           />
         </Surface>
 
+        {/* Who Added Me */}
+        <Surface style={[styles.settingsCard, { backgroundColor: theme.card }]} elevation={1}>
+          <List.Item
+            title="Ekli Olduğum Kişiler"
+            description="Sizi arkadaş olarak ekleyen kişileri görün"
+            left={(props) => <List.Icon {...props} icon="account-multiple" color={colors.primary[600]} />}
+            right={(props) => <List.Icon {...props} icon="chevron-right" color={theme.textSecondary} />}
+            onPress={handleShowWhoAddedMe}
+            titleStyle={{ color: theme.text }}
+            descriptionStyle={{ color: theme.textSecondary }}
+          />
+        </Surface>
+
         {/* Delete Account */}
         <Surface style={[styles.deleteCard, { backgroundColor: theme.card }]} elevation={1}>
           <List.Item
@@ -308,7 +422,7 @@ export default function ProfileScreen() {
         <Dialog
           visible={showAvatarGrid}
           onDismiss={() => setShowAvatarGrid(false)}
-          style={[styles.avatarDialog, { backgroundColor: theme.dialogBackground, borderColor: theme.dialogBorder, borderWidth: 2 }]}
+          style={[styles.avatarDialog, { backgroundColor: theme.dialogBackground }]}
         >
           <Dialog.Title style={{ color: theme.dialogText }}>Avatar Seç</Dialog.Title>
           <Dialog.Content>
@@ -320,14 +434,15 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   style={[
                     styles.avatarGridItem,
-                    avatarStyle === item.value && { borderColor: colors.primary[600], backgroundColor: colors.accent[400] },
+                    { backgroundColor: theme.card },
+                    avatarStyle === item.value && { borderColor: colors.primary[600], backgroundColor: isDark ? '#470000' : '#ffcccc' },
                   ]}
                   onPress={() => {
                     setAvatarStyle(item.value);
                     setShowAvatarGrid(false);
                   }}
                 >
-                  <Avatar username={user.username} style={item.value} size={60} />
+                  <Avatar username={user.username} style={item.value} size={80} />
                   <Text variant="bodySmall" style={[styles.avatarGridLabel, { color: theme.dialogText }]}>{item.label}</Text>
                 </TouchableOpacity>
               )}
@@ -340,7 +455,6 @@ export default function ProfileScreen() {
           onDismiss={() => setShowQRDialog(false)}
           style={{ backgroundColor: theme.dialogBackground, borderColor: theme.dialogBorder, borderWidth: 2 }}
         >
-          <Dialog.Title style={{ color: theme.dialogText }}>Karekodum</Dialog.Title>
           <Dialog.Content style={styles.qrContent}>
             <View style={styles.qrContainer}>
               <QRCode
@@ -354,9 +468,6 @@ export default function ProfileScreen() {
                 backgroundColor="white"
               />
             </View>
-            <Text variant="bodyMedium" style={[styles.qrText, { color: theme.dialogText }]}>
-              @{user.username}
-            </Text>
             <Text variant="bodySmall" style={[styles.qrSubtext, { color: theme.dialogText, opacity: 0.7 }]}>
               Kullanıcı Kodu: {user.friendCode}
             </Text>
@@ -433,6 +544,61 @@ export default function ProfileScreen() {
               disabled={deleteConfirmText !== 'SIL'}
             >
               Hesabı Sil
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog
+          visible={showWhoAddedMeDialog}
+          onDismiss={() => setShowWhoAddedMeDialog(false)}
+          style={[styles.whoAddedMeDialog, { backgroundColor: theme.dialogBackground }]}
+        >
+          <Dialog.Title style={{ color: theme.dialogText }}>Ekli Olduğum Kişiler</Dialog.Title>
+          <Dialog.Content>
+            {usersWhoAddedMe.length === 0 ? (
+              <Text style={{ color: theme.textSecondary, textAlign: 'center', marginVertical: 20 }}>
+                Henüz kimse sizi arkadaş olarak eklememiş
+              </Text>
+            ) : (
+              <FlatList
+                data={usersWhoAddedMe}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <Surface style={[styles.whoAddedMeItem, { backgroundColor: theme.card }]} elevation={1}>
+                    <View style={styles.whoAddedMeInfo}>
+                      <Avatar username={item.username} style={item.avatarStyle} size={48} />
+                      <View style={styles.whoAddedMeText}>
+                        <Text variant="bodyLarge" style={{ color: theme.text, fontWeight: '600' }}>
+                          {item.displayName}
+                        </Text>
+                        <Text variant="bodySmall" style={{ color: theme.textSecondary }}>
+                          @{item.username}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.whoAddedMeActions}>
+                      <IconButton
+                        icon="delete"
+                        size={20}
+                        iconColor={colors.error}
+                        onPress={() => handleRemoveUserWhoAddedMe(item.id, item.displayName)}
+                      />
+                      <IconButton
+                        icon="block-helper"
+                        size={20}
+                        iconColor={isDark ? '#da0000' : '#780000'}
+                        onPress={() => handleBlockUserWhoAddedMe(item.id, item.displayName)}
+                      />
+                    </View>
+                  </Surface>
+                )}
+                style={styles.whoAddedMeList}
+              />
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setShowWhoAddedMeDialog(false)} textColor={theme.dialogText}>
+              Kapat
             </Button>
           </Dialog.Actions>
         </Dialog>
@@ -546,20 +712,21 @@ const styles = StyleSheet.create({
   avatarGridItem: {
     flex: 1,
     alignItems: 'center',
-    padding: 12,
-    margin: 4,
-    borderRadius: 12,
+    padding: 16,
+    margin: 6,
+    borderRadius: 20,
     borderWidth: 2,
     borderColor: 'transparent',
-    backgroundColor: colors.neutral[50],
+    minHeight: 140,
   },
   avatarGridLabel: {
     marginTop: 8,
-    fontSize: 12,
+    fontSize: 11,
     textAlign: 'center',
   },
   qrContent: {
     alignItems: 'center',
+    marginTop: 50,
   },
   qrContainer: {
     padding: 16,
@@ -572,5 +739,32 @@ const styles = StyleSheet.create({
   },
   qrSubtext: {
     marginTop: 4,
+  },
+  whoAddedMeDialog: {
+    maxHeight: '80%',
+  },
+  whoAddedMeList: {
+    maxHeight: 400,
+  },
+  whoAddedMeItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    marginBottom: 8,
+    borderRadius: 12,
+  },
+  whoAddedMeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  whoAddedMeText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  whoAddedMeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });

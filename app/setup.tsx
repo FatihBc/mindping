@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, FlatList, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
-import { TextInput, Button, Text, Surface, Menu, IconButton } from 'react-native-paper';
+import { TextInput, Button, Text, Surface, IconButton } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { getCurrentUser, setCurrentUser } from '../src/services/storage';
 import { getCurrentAuthUser } from '../src/services/auth';
 import { AVATAR_STYLES } from '../src/types/index';
 import { Avatar } from '../src/components/Avatar';
 import { colors } from '../src/theme/colors';
+import { useTheme } from '../src/context/ThemeContext';
 import '../src/i18n/index';
 
 export default function SetupScreen() {
@@ -15,8 +16,8 @@ export default function SetupScreen() {
   const [displayName, setDisplayName] = useState('');
   const [avatarStyle, setAvatarStyle] = useState('avataaars');
   const [loading, setLoading] = useState(false);
-  const [menuVisible, setMenuVisible] = useState(false);
   const { t } = useTranslation();
+  const { theme } = useTheme();
 
   useEffect(() => {
     // Pre-fill display name from Firebase auth if available
@@ -106,31 +107,45 @@ export default function SetupScreen() {
           Avatar Stili
         </Text>
 
-        <Menu
-          visible={menuVisible}
-          onDismiss={() => setMenuVisible(false)}
-          anchor={
-            <Button
-              mode="outlined"
-              onPress={() => setMenuVisible(true)}
-              style={styles.styleButton}
-              icon="palette"
+        <FlatList
+          data={AVATAR_STYLES}
+          numColumns={3}
+          keyExtractor={(item) => item.value}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              onPress={() => setAvatarStyle(item.value)}
+              style={[
+                styles.avatarGridItem,
+                {
+                  backgroundColor: avatarStyle === item.value
+                    ? '#ffcccc'
+                    : theme.card,
+                  borderColor: avatarStyle === item.value
+                    ? '#470000'
+                    : 'transparent',
+                },
+              ]}
             >
-              {selectedStyle}
-            </Button>
-          }
-        >
-          {AVATAR_STYLES.map((style) => (
-            <Menu.Item
-              key={style.value}
-              onPress={() => {
-                setAvatarStyle(style.value);
-                setMenuVisible(false);
-              }}
-              title={style.label}
-            />
-          ))}
-        </Menu>
+              <Avatar
+                username={username || 'user'}
+                style={item.value}
+                size={60}
+              />
+              <Text
+                variant="bodySmall"
+                style={[
+                  styles.avatarGridLabel,
+                  { color: theme.text },
+                ]}
+                numberOfLines={2}
+              >
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={styles.avatarGrid}
+          scrollEnabled={false}
+        />
 
         <Button
           mode="contained"
@@ -181,9 +196,22 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     color: colors.neutral[700],
   },
-  styleButton: {
-    marginBottom: 24,
-    borderColor: colors.primary[300],
+  avatarGrid: {
+    marginBottom: 16,
+  },
+  avatarGridItem: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 12,
+    margin: 4,
+    borderRadius: 16,
+    borderWidth: 2,
+    minHeight: 120,
+  },
+  avatarGridLabel: {
+    marginTop: 8,
+    fontSize: 11,
+    textAlign: 'center',
   },
   button: {
     marginTop: 8,
