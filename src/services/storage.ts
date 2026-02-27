@@ -207,6 +207,29 @@ export const sendPingWithFirebase = async (
     const pingId = await sendPingToFirebase(senderId, receiverId);
     console.log('Ping sent to Firebase, ID:', pingId);
 
+    // Send push notification to receiver
+    try {
+      const { getUserById } = await import('./firebase-db');
+      const { sendPushNotification } = await import('./notifications');
+
+      const [senderUser, receiverUser] = await Promise.all([
+        getCurrentUser(),
+        getUserById(receiverId)
+      ]);
+
+      if (receiverUser?.pushToken && senderUser) {
+        await sendPushNotification(
+          receiverUser.pushToken,
+          'Yeni Ping! 🔔',
+          `${senderUser.displayName} sana ping attı!`,
+          { senderId, pingId }
+        );
+        console.log('Push notification sent to receiver');
+      }
+    } catch (notifError) {
+      console.error('Failed to send push notification:', notifError);
+    }
+
     // Also save locally
     const ping: Ping = {
       id: pingId,

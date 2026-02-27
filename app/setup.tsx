@@ -5,6 +5,8 @@ import { TextInput, Button, Text, Surface, IconButton } from 'react-native-paper
 import { useTranslation } from 'react-i18next';
 import { getCurrentUser, setCurrentUser } from '../src/services/storage';
 import { getCurrentAuthUser } from '../src/services/auth';
+import { registerForPushNotifications } from '../src/services/notifications';
+import { updateUserPushToken } from '../src/services/firebase-db';
 import { AVATAR_STYLES } from '../src/types/index';
 import { Avatar } from '../src/components/Avatar';
 import { colors } from '../src/theme/colors';
@@ -59,6 +61,18 @@ export default function SetupScreen() {
     };
 
     await setCurrentUser(newUser);
+
+    // Register for push notifications and save token
+    try {
+      const pushToken = await registerForPushNotifications();
+      if (pushToken && firebaseUser?.uid) {
+        await updateUserPushToken(firebaseUser.uid, pushToken);
+        console.log('Push token registered:', pushToken);
+      }
+    } catch (error) {
+      console.error('Error registering push token:', error);
+    }
+
     setLoading(false);
     router.replace('/(tabs)');
   };

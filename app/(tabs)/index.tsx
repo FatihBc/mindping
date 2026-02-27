@@ -13,7 +13,7 @@ import {
   Button,
 } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import { getFriends, getCurrentUser, removeFriend, updateFriends, savePing, getPingsBetweenUsers } from '../../src/services/storage';
+import { getFriends, getCurrentUser, removeFriend, updateFriends, sendPingWithFirebase, getPingsBetweenUsers } from '../../src/services/storage';
 import { logoutUser, deleteUserAccount, getCurrentAuthUser, resendEmailVerification } from '../../src/services/auth';
 import { changeLanguage, getAvailableLanguages } from '../../src/i18n';
 import { Avatar } from '../../src/components/Avatar';
@@ -162,6 +162,9 @@ export default function FriendsScreen() {
   const handleSendPing = async (friend: Friend) => {
     if (!currentUser) return;
 
+    // TEMPORARY: Cooldown disabled for testing
+    // TODO: Re-enable after testing
+    /*
     // Check last ping time (30 minute cooldown)
     const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
     const recentPings = await getPingsBetweenUsers(currentUser.id, friend.id, thirtyMinutesAgo);
@@ -178,16 +181,10 @@ export default function FriendsScreen() {
       );
       return;
     }
+    */
 
-    const ping = {
-      id: Date.now().toString(),
-      senderId: currentUser.id,
-      receiverId: friend.id,
-      timestamp: Date.now(),
-      message: 'Aklımdasın',
-    };
-
-    await savePing(ping);
+    // Send ping to Firebase (also saves locally)
+    await sendPingWithFirebase(currentUser.id, friend.id);
 
     Alert.alert(
       'Ping Gönderildi! 💌',

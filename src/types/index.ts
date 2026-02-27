@@ -6,6 +6,7 @@ export interface User {
   avatarStyle?: string;
   avatarSeed?: string;
   language?: string;
+  pushToken?: string;  // Expo push notification token
   createdAt: number;
 }
 

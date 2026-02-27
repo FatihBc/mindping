@@ -19,7 +19,7 @@ import {
   IconButton,
 } from 'react-native-paper';
 import { router } from 'expo-router';
-import { loginUser, registerUser } from '../src/services/auth';
+import { loginUser, registerUser, resendEmailVerification, getCurrentAuthUser } from '../src/services/auth';
 import { colors } from '../src/theme/colors';
 import { useTheme } from '../src/context/ThemeContext';
 
@@ -35,6 +35,9 @@ export default function AuthScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
+  const [showResendModal, setShowResendModal] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [unverifiedUser, setUnverifiedUser] = useState<any>(null);
 
   // Password validation
   const [passwordValidations, setPasswordValidations] = useState({
@@ -96,6 +99,10 @@ export default function AuthScreen() {
         const result = await loginUser(email, password);
         if (result.success) {
           router.replace('/(tabs)');
+        } else if (result.needsVerification) {
+          setRegisteredEmail(email);
+          setUnverifiedUser(result.user);
+          setShowResendModal(true);
         } else {
           Alert.alert('Giriş Hatası', result.error || 'Giriş yapılamadı');
         }
@@ -112,6 +119,31 @@ export default function AuthScreen() {
       Alert.alert('Hata', 'Bir hata oluştu');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResendLoading(true);
+    try {
+      const firebaseUser = unverifiedUser || getCurrentAuthUser();
+      if (firebaseUser) {
+        const result = await resendEmailVerification(firebaseUser);
+        if (result.success) {
+          Alert.alert(
+            'Email Gönderildi',
+            'Doğrulama emaili tekrar gönderildi. Lütfen gelen kutunuzu ve spam klasörünüzü kontrol edin.',
+            [{ text: 'Tamam' }]
+          );
+        } else {
+          Alert.alert('Hata', result.error || 'Email gönderilemedi');
+        }
+      } else {
+        Alert.alert('Hata', 'Kullanıcı bilgisi bulunamadı');
+      }
+    } catch (error) {
+      Alert.alert('Hata', 'Email gönderilirken bir hata oluştu');
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -298,6 +330,9 @@ export default function AuthScreen() {
               <Text variant="bodyMedium" style={[styles.modalText, { color: theme.dialogText, opacity: 0.9 }]}>
                 {registeredEmail} adresine doğrulama linki gönderildi. Lütfen emailinizi kontrol edin ve doğrulama yapın.
               </Text>
+              <Text variant="bodySmall" style={[styles.modalText, { color: theme.dialogText, opacity: 0.7, marginTop: 8 }]}>
+                ⚠️ Email gelmedi mi? Spam/Gereksiz klasörünü kontrol edin.
+              </Text>
               <Button
                 mode="contained"
                 onPress={() => {
@@ -308,6 +343,55 @@ export default function AuthScreen() {
               >
                 Giriş Sayfasına Git
               </Button>
+            </Surface>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Resend Verification Modal */}
+      <Modal
+        visible={showResendModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowResendModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowResendModal(false)}>
+          <View style={styles.modalOverlay}>
+            <Surface style={[styles.modalContent, { backgroundColor: theme.dialogBackground, borderColor: theme.dialogBorder, borderWidth: 2 }]} elevation={5}>
+              <IconButton
+                icon="email-alert"
+                size={48}
+                iconColor={colors.warning}
+                style={styles.modalIcon}
+              />
+              <Text variant="titleLarge" style={[styles.modalTitle, { color: theme.dialogText }]}>
+                Email Doğrulanmamış
+              </Text>
+              <Text variant="bodyMedium" style={[styles.modalText, { color: theme.dialogText, opacity: 0.9 }]}>
+                {registeredEmail} adresiniz henüz doğrulanmamış. Giriş yapabilmek için emailinizi doğrulamanız gerekiyor.
+              </Text>
+              <Text variant="bodySmall" style={[styles.modalText, { color: theme.dialogText, opacity: 0.7, marginTop: 8 }]}>
+                ⚠️ Email gelmedi mi? Spam/Gereksiz klasörünü kontrol edin.
+              </Text>
+              <View style={styles.modalButtons}>
+                <Button
+                  mode="outlined"
+                  onPress={handleResendVerification}
+                  loading={resendLoading}
+                  disabled={resendLoading}
+                  style={styles.modalButtonOutlined}
+                  textColor={colors.primary[600]}
+                >
+                  Tekrar Gönder
+                </Button>
+                <Button
+                  mode="contained"
+                  onPress={() => setShowResendModal(false)}
+                  style={styles.modalButton}
+                >
+                  Tamam
+                </Button>
+              </View>
             </Surface>
           </View>
         </TouchableWithoutFeedback>
@@ -429,5 +513,15 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     backgroundColor: colors.primary[600],
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginTop: 8,
+  },
+  modalButtonOutlined: {
+    flex: 1,
+    borderColor: colors.primary[600],
   },
 });

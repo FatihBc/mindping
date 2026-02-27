@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import {
   Text,
@@ -191,7 +191,11 @@ export default function AddFriendScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: theme.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
+    >
       {/* Burgundy Header */}
       <Surface style={[styles.headerCard, { backgroundColor: colors.primary[800] }]} elevation={2}>
         <Text variant="titleLarge" style={styles.headerTitle}>
@@ -199,7 +203,11 @@ export default function AddFriendScreen() {
         </Text>
       </Surface>
 
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <SegmentedButtons
           value={mode}
           onValueChange={(v) => {
@@ -215,14 +223,16 @@ export default function AddFriendScreen() {
 
         {mode === 'scan' ? (
           <View style={styles.scanContainer}>
-            <CameraView
-              style={styles.camera}
-              facing="back"
-              onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-              barcodeScannerSettings={{
-                barcodeTypes: ['qr'],
-              }}
-            />
+            {permission?.granted && (
+              <CameraView
+                style={styles.camera}
+                facing="back"
+                onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+                barcodeScannerSettings={{
+                  barcodeTypes: ['qr'],
+                }}
+              />
+            )}
             <Surface style={[styles.overlay, { backgroundColor: theme.card }]} elevation={1}>
               <Text variant="bodyMedium" style={{ color: theme.text }}>
                 Arkadaşınızın QR kodunu kameraya gösterin
@@ -285,8 +295,8 @@ export default function AddFriendScreen() {
             </View>
           </Surface>
         )}
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -310,6 +320,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   segmented: {
     marginBottom: 16,

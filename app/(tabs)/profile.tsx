@@ -15,7 +15,7 @@ import {
 } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { getCurrentUser, updateUser, setCurrentUser, clearAllData, removeFriend } from '../../src/services/storage';
-import { logoutUser, deleteUserAccount, getCurrentAuthUser } from '../../src/services/auth';
+import { logoutUser, deleteUserAccount, getCurrentAuthUser, reauthenticateUser } from '../../src/services/auth';
 import { changeLanguage, getAvailableLanguages } from '../../src/i18n';
 import { Avatar } from '../../src/components/Avatar';
 import { AVATAR_STYLES } from '../../src/types/index';
@@ -43,6 +43,8 @@ export default function ProfileScreen() {
   const [showWhoAddedMeDialog, setShowWhoAddedMeDialog] = useState(false);
   const [usersWhoAddedMe, setUsersWhoAddedMe] = useState<User[]>([]);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
   const languages = getAvailableLanguages();
 
   useFocusEffect(
@@ -108,6 +110,17 @@ export default function ProfileScreen() {
       return;
     }
 
+    // Close delete dialog and open password dialog
+    setShowDeleteDialog(false);
+    setShowPasswordDialog(true);
+  };
+
+  const handleConfirmDeleteWithPassword = async () => {
+    if (!deletePassword) {
+      Alert.alert('Hata', 'Şifrenizi girmelisiniz');
+      return;
+    }
+
     const firebaseUser = getCurrentAuthUser();
     if (!firebaseUser || !user) {
       Alert.alert('Hata', 'Kullanıcı bulunamadı');
@@ -115,6 +128,13 @@ export default function ProfileScreen() {
     }
 
     try {
+      // Re-authenticate user with password
+      const reauthResult = await reauthenticateUser(firebaseUser, deletePassword);
+      if (!reauthResult.success) {
+        Alert.alert('Hata', 'Şifre yanlış. Lütfen tekrar deneyin.');
+        return;
+      }
+
       // Get friends list before deleting
       const friendIds = await getFriendships(user.id);
 
@@ -126,14 +146,16 @@ export default function ProfileScreen() {
       // Delete the account
       const result = await deleteUserAccount(firebaseUser);
       if (result.success) {
+        await clearAllData();
+        setShowPasswordDialog(false);
+        setDeletePassword('');
         Alert.alert(
-          'Email Onayı Gerekli',
-          'Silme işleminin tamamlanması için size e-mail gönderilmiştir. Silmeyi onayladıktan sonra silme işlemi tamamlanacaktır.',
+          'Hesap Silindi',
+          'Hesabınız başarıyla silindi. Arkadaşlarınıza bildirim gönderildi.',
           [
             {
               text: 'Tamam',
-              onPress: async () => {
-                await clearAllData();
+              onPress: () => {
                 router.replace('/auth');
               },
             },
@@ -542,6 +564,52 @@ export default function ProfileScreen() {
               onPress={handleDeleteAccount}
               textColor={colors.error}
               disabled={deleteConfirmText !== 'SIL'}
+            >
+              Hesabı Sil
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog
+          visible={showPasswordDialog}
+          onDismiss={() => {
+            setShowPasswordDialog(false);
+            setDeletePassword('');
+          }}
+          style={{ backgroundColor: theme.dialogBackground }}
+        >
+          <Dialog.Title style={{ color: theme.dialogText }}>Şifrenizi Girin</Dialog.Title>
+          <Dialog.Content>
+            <Text style={{ color: theme.textSecondary, marginBottom: 16 }}>
+              Hesabınızı silmek için şifrenizi doğrulamanız gerekiyor.
+            </Text>
+            <TextInput
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              mode="outlined"
+              secureTextEntry
+              placeholder="Şifreniz"
+              autoCapitalize="none"
+              style={{ backgroundColor: theme.dialogBackground }}
+              textColor={theme.dialogText}
+              outlineColor={theme.dialogBorder}
+              activeOutlineColor={theme.dialogBorder}
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button
+              onPress={() => {
+                setShowPasswordDialog(false);
+                setDeletePassword('');
+              }}
+              textColor={theme.dialogText}
+            >
+              İptal
+            </Button>
+            <Button
+              onPress={handleConfirmDeleteWithPassword}
+              textColor={colors.error}
+              disabled={!deletePassword}
             >
               Hesabı Sil
             </Button>

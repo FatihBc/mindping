@@ -46,8 +46,17 @@
       "package": "com.mindping.app",
       "permissions": [
         "CAMERA",
-        "NOTIFICATIONS"
+        "NOTIFICATIONS",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b6743ec2-cb44-4abd-bc41-07faf5ff5a1d"
+      }
+    },
+    "owner": "fatihbuyukcam"
   }
 }

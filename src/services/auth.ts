@@ -7,6 +7,8 @@ import {
   onAuthStateChanged,
   signOut,
   reload,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
   type User as FirebaseUser
 } from 'firebase/auth';
 import { auth } from './firebase';
@@ -16,13 +18,13 @@ export async function registerUser(email: string, password: string, displayName:
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Update profile with display name
     await updateProfile(user, { displayName });
-    
+
     // Send email verification
     await sendEmailVerification(user);
-    
+
     return { success: true, user };
   } catch (error: any) {
     return { success: false, error: error.message, code: error.code };
@@ -34,16 +36,17 @@ export async function loginUser(email: string, password: string) {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Check if email is verified
     if (!user.emailVerified) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: 'Email not verified. Please check your inbox and verify your email.',
-        needsVerification: true 
+        needsVerification: true,
+        user // Return user so we can resend verification email
       };
     }
-    
+
     return { success: true, user };
   } catch (error: any) {
     return { success: false, error: error.message, code: error.code };
@@ -67,6 +70,20 @@ export async function checkEmailVerification(user: FirebaseUser) {
     return { verified: user.emailVerified };
   } catch (error: any) {
     return { verified: false, error: error.message };
+  }
+}
+
+// Re-authenticate user with password
+export async function reauthenticateUser(user: FirebaseUser, password: string) {
+  try {
+    if (!user.email) {
+      return { success: false, error: 'Email bulunamadı' };
+    }
+    const credential = EmailAuthProvider.credential(user.email, password);
+    await reauthenticateWithCredential(user, credential);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
   }
 }
 

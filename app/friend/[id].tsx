@@ -7,7 +7,7 @@ import {
   getFriends,
   getPingsBetweenUsers,
   getCurrentUser,
-  savePing,
+  sendPingWithFirebase,
 } from '../../src/services/storage';
 import { Avatar } from '../../src/components/Avatar';
 import { colors } from '../../src/theme/colors';
@@ -58,6 +58,9 @@ export default function FriendDetailScreen() {
     const currentUser = await getCurrentUser();
     if (!currentUser) return;
 
+    // TEMPORARY: Cooldown disabled for testing
+    // TODO: Re-enable after testing
+    /*
     // Check last ping time (30 minute cooldown)
     const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
     const recentPings = await getPingsBetweenUsers(currentUser.id, friend.id, thirtyMinutesAgo);
@@ -74,16 +77,10 @@ export default function FriendDetailScreen() {
       );
       return;
     }
+    */
 
-    const ping = {
-      id: Date.now().toString(),
-      senderId: currentUser.id,
-      receiverId: friend.id,
-      timestamp: Date.now(),
-      message: 'Aklımdasın',
-    };
-
-    await savePing(ping);
+    // Send ping to Firebase (also saves locally)
+    await sendPingWithFirebase(currentUser.id, friend.id);
 
     Alert.alert(
       'Ping Gönderildi! 💌',

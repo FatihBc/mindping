@@ -31,6 +31,14 @@ export const createOrUpdateUser = async (user: User): Promise<void> => {
   }, { merge: true });
 };
 
+export const updateUserPushToken = async (userId: string, pushToken: string): Promise<void> => {
+  const userRef = doc(db, USERS_COLLECTION, userId);
+  await updateDoc(userRef, {
+    pushToken,
+    updatedAt: serverTimestamp(),
+  });
+};
+
 export const getUserById = async (userId: string): Promise<User | null> => {
   const userRef = doc(db, USERS_COLLECTION, userId);
   const snapshot = await getDoc(userRef);
