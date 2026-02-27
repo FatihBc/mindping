@@ -22,21 +22,29 @@ export function useIncomingPings() {
     const unsubscribe = listenToIncomingPings(userId, async (pings) => {
       setUnreadPings(pings);
       setUnreadCount(pings.length);
-      
-      // Save pings locally and update stats
+
+      // Save pings locally and update stats (but don't mark as read yet)
       for (const ping of pings) {
         await addPing(ping);
-        
+
         const today = new Date().toISOString().split('T')[0];
         await incrementReceivedPings(today);
-        
-        // Mark as read in Firebase
-        await markPingAsRead(ping.id);
       }
     });
 
     return () => unsubscribe();
   }, [userId]);
 
-  return { unreadPings, unreadCount };
+  // Mark pings from a specific friend as read
+  const markFriendPingsAsRead = async (friendId: string) => {
+    const pingsToMark = unreadPings.filter(ping => ping.senderId === friendId);
+    for (const ping of pingsToMark) {
+      await markPingAsRead(ping.id);
+    }
+    // Update local state
+    setUnreadPings(prev => prev.filter(ping => ping.senderId !== friendId));
+    setUnreadCount(prev => prev - pingsToMark.length);
+  };
+
+  return { unreadPings, unreadCount, markFriendPingsAsRead };
 }

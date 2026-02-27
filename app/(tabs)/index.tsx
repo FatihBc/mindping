@@ -8,20 +8,33 @@ import {
   Surface,
   IconButton,
   Badge,
+  Appbar,
 } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import { getFriends, getCurrentUser } from '@/services/storage';
-import { Avatar } from '@/components/Avatar';
-import { useIncomingPings } from '@/hooks/useIncomingPings';
-import type { Friend, User } from '@/types/index';
-import '../../src/i18n';
+import { getFriends, getCurrentUser, removeFriend, updateFriends } from '../../src/services/storage';
+import { logoutUser, deleteUserAccount, getCurrentAuthUser, resendEmailVerification } from '../../src/services/auth';
+import { changeLanguage, getAvailableLanguages } from '../../src/i18n';
+import { Avatar } from '../../src/components/Avatar';
+import { Alert } from 'react-native';
+import { useIncomingPings } from '../../src/hooks/useIncomingPings';
+import { colors } from '../../src/theme/colors';
+import { useTheme } from '../../src/context/ThemeContext';
+import type { Friend, User } from '../../src/types/index';
+import '../../src/i18n/index';
 
 export default function FriendsScreen() {
   const { t } = useTranslation();
+  const { theme } = useTheme();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const { unreadCount } = useIncomingPings();
+  const [isEditMode, setIsEditMode] = useState(false);
+  const { unreadPings, unreadCount, markFriendPingsAsRead } = useIncomingPings();
+
+  // Calculate ping count per friend
+  const getPingCountForFriend = (friendId: string) => {
+    return unreadPings.filter(ping => ping.senderId === friendId).length;
+  };
 
   const loadData = async () => {
     setFriends(await getFriends());
@@ -40,61 +53,138 @@ export default function FriendsScreen() {
     setRefreshing(false);
   };
 
-  const renderFriend = ({ item }: { item: Friend }) => (
-    <Surface style={styles.friendCard} elevation={1}>
-      <List.Item
-        title={item.displayName}
-        description={`@${item.username}`}
-        left={() => (
-          <Avatar
-            username={item.username}
-            style={item.avatarStyle}
-            size={48}
-          />
-        )}
-        right={() => (
-          <IconButton
-            icon="send"
-            size={24}
-            onPress={() => router.push(`/ping/${item.id}`)}
-          />
-        )}
-        onPress={() => router.push(`/friend/${item.id}`)}
-      />
-    </Surface>
-  );
+  const handleMoveFriend = async (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === friends.length - 1) return;
+
+    const newFriends = [...friends];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+
+    // Swap friends
+    [newFriends[index], newFriends[targetIndex]] = [newFriends[targetIndex], newFriends[index]];
+
+    setFriends(newFriends);
+    await updateFriends(newFriends);
+  };
+
+  const handleDeleteFriend = async (friendId: string, friendName: string) => {
+    Alert.alert(
+      'Arkadaşı Sil',
+      `${friendName} arkadaş listenizden silinecek.`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            await removeFriend(friendId);
+            loadData();
+          },
+        },
+      ]
+    );
+  };
+
+  const renderFriend = ({ item, index }: { item: Friend; index: number }) => {
+    const pingCount = getPingCountForFriend(item.id);
+    return (
+      <Surface style={[styles.friendCard, { backgroundColor: theme.card }]} elevation={1}>
+        <List.Item
+          title={item.displayName}
+          titleStyle={{ color: theme.text }}
+          left={() => (
+            <Avatar
+              username={item.username}
+              style={item.avatarStyle}
+              size={48}
+            />
+          )}
+          right={() => (
+            <View style={styles.actions}>
+              {pingCount > 0 && !isEditMode && (
+                <Badge style={styles.pingBadge}>{pingCount}</Badge>
+              )}
+              {isEditMode ? (
+                <>
+                  <IconButton
+                    icon="chevron-up"
+                    size={20}
+                    disabled={index === 0}
+                    onPress={() => handleMoveFriend(index, 'up')}
+                    iconColor={colors.primary[600]}
+                  />
+                  <IconButton
+                    icon="chevron-down"
+                    size={20}
+                    disabled={index === friends.length - 1}
+                    onPress={() => handleMoveFriend(index, 'down')}
+                    iconColor={colors.primary[600]}
+                  />
+                  <IconButton
+                    icon="delete"
+                    size={20}
+                    iconColor={colors.error}
+                    onPress={() => handleDeleteFriend(item.id, item.displayName)}
+                  />
+                </>
+              ) : (
+                <>
+                  <IconButton
+                    icon="send"
+                    size={24}
+                    onPress={() => router.push(`/ping/${item.id}`)}
+                    iconColor={colors.primary[600]}
+                  />
+                </>
+              )}
+            </View>
+          )}
+          onPress={() => {
+            if (!isEditMode) {
+              markFriendPingsAsRead(item.id);
+              router.push(`/friend/${item.id}`);
+            }
+          }}
+        />
+      </Surface>
+    );
+  };
 
   return (
-    <View style={styles.container}>
-      {currentUser && (
-        <Surface style={styles.myCard} elevation={2}>
-          <List.Item
-            title={t('myCode')}
-            description={`@${currentUser.username}`}
-            left={() => (
-              <Avatar
-                username={currentUser.username}
-                style={currentUser.avatarStyle}
-                size={48}
-              />
-            )}
-            right={() => <IconButton icon="qrcode" size={28} />}
-            onPress={() => router.push('/my-qr')}
-          />
-        </Surface>
-      )}
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Bordo header */}
+      <Surface style={[styles.headerCard, { backgroundColor: colors.primary[800] }]} elevation={2}>
+        <View style={styles.headerRow}>
+          <Text variant="titleLarge" style={styles.headerTitle}>
+            {t('friends')}
+          </Text>
+        </View>
+      </Surface>
 
       {unreadCount > 0 && (
-        <Surface style={styles.notificationBanner} elevation={2}>
+        <Surface style={[styles.notificationBanner, { backgroundColor: colors.primary[600] }]} elevation={2}>
           <Text variant="bodyMedium" style={styles.notificationText}>
-            🔔 {unreadCount} yeni dürtme!
+            {`🔔 ${unreadCount} yeni dürtme!`}
           </Text>
         </Surface>
       )}
 
-      <Text variant="titleMedium" style={styles.sectionTitle}>
-        {t('myFriends')}
-      </Text>
+      <View style={styles.myFriendsRow}>
+        <Text variant="titleMedium" style={[styles.sectionTitle, { color: theme.text }]}>
+          {t('myFriends')} ({friends.length})
+        </Text>
+        <IconButton
+          icon={isEditMode ? 'check' : 'pencil'}
+          size={24}
+          onPress={() => setIsEditMode(!isEditMode)}
+          iconColor={colors.primary[600]}
+        />
+      </View>
+      {isEditMode && (
+        <Text variant="bodySmall" style={[styles.editHint, { color: theme.textMuted }]}>
+          Sıralamak için yukarı/aşağı okları kullanın
+        </Text>
+      )}
 
       <FlatList
         data={friends}
@@ -105,18 +195,20 @@ export default function FriendsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         ListEmptyComponent={
-          <Text style={styles.emptyText}>
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
             {t('noFriends')}
           </Text>
         }
       />
 
-      <FAB
-        icon="qrcode-scan"
-        style={styles.fab}
-        onPress={() => router.push('/add-friend')}
-        label={t('addFriend')}
-      />
+      {!isEditMode && (
+        <FAB
+          icon="qrcode-scan"
+          style={[styles.fab, { backgroundColor: colors.primary[600] }]}
+          onPress={() => router.push('/add-friend')}
+          label={t('addFriend')}
+        />
+      )}
     </View>
   );
 }
@@ -124,35 +216,66 @@ export default function FriendsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
-  myCard: {
-    margin: 16,
-    borderRadius: 12,
+  headerCard: {
+    paddingTop: 60,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 20,
+  },
+  myFriendsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontWeight: '600',
+  },
+  editHint: {
+    fontStyle: 'italic',
+    marginHorizontal: 16,
+    marginBottom: 8,
   },
   notificationBanner: {
     marginHorizontal: 16,
-    marginTop: 8,
+    marginTop: 16,
     padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#6366f1',
+    borderRadius: 12,
   },
   notificationText: {
     color: 'white',
     textAlign: 'center',
   },
-  sectionTitle: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 8,
-  },
   list: {
     padding: 16,
-    gap: 8,
+    paddingTop: 8,
   },
   friendCard: {
-    marginBottom: 8,
-    borderRadius: 12,
+    marginBottom: 12,
+    borderRadius: 16,
+    padding: 4,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pingBadge: {
+    backgroundColor: colors.error,
+    marginRight: 8,
   },
   emptyText: {
     textAlign: 'center',
@@ -163,6 +286,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     bottom: 16,
-    backgroundColor: '#6366f1',
   },
 });

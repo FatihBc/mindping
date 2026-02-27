@@ -51,11 +51,24 @@ export const getUserByUsername = async (username: string): Promise<User | null> 
   return null;
 };
 
+export const getUserByFriendCode = async (friendCode: string): Promise<User | null> => {
+  const q = query(
+    collection(db, USERS_COLLECTION),
+    where('friendCode', '==', friendCode.toUpperCase())
+  );
+  const snapshot = await getDocs(q);
+  if (!snapshot.empty) {
+    return snapshot.docs[0].data() as User;
+  }
+  return null;
+};
+
 // Ping Operations
 export const sendPing = async (
   senderId: string,
   receiverId: string
 ): Promise<string> => {
+  console.log('Firebase sendPing called:', { senderId, receiverId });
   const pingData = {
     senderId,
     receiverId,
@@ -63,9 +76,15 @@ export const sendPing = async (
     read: false,
     createdAt: serverTimestamp(),
   };
-  
-  const docRef = await addDoc(collection(db, PINGS_COLLECTION), pingData);
-  return docRef.id;
+
+  try {
+    const docRef = await addDoc(collection(db, PINGS_COLLECTION), pingData);
+    console.log('Firebase ping sent, ID:', docRef.id);
+    return docRef.id;
+  } catch (error) {
+    console.error('Firebase sendPing error:', error);
+    throw error;
+  }
 };
 
 export const markPingAsRead = async (pingId: string): Promise<void> => {
@@ -78,19 +97,24 @@ export const listenToIncomingPings = (
   userId: string,
   callback: (pings: Ping[]) => void
 ) => {
+  console.log('Setting up incoming pings listener for userId:', userId);
   const q = query(
     collection(db, PINGS_COLLECTION),
     where('receiverId', '==', userId),
     where('read', '==', false),
     orderBy('timestamp', 'desc')
   );
-  
+
   return onSnapshot(q, (snapshot) => {
+    console.log('Incoming pings snapshot received, count:', snapshot.size);
     const pings: Ping[] = [];
     snapshot.forEach((doc) => {
       pings.push({ id: doc.id, ...doc.data() } as Ping);
     });
+    console.log('Pings in snapshot:', pings);
     callback(pings);
+  }, (error) => {
+    console.error('Error in listenToIncomingPings:', error);
   });
 };
 
@@ -103,7 +127,7 @@ export const listenToPingCount = (
     where('receiverId', '==', userId),
     where('read', '==', false)
   );
-  
+
   return onSnapshot(q, (snapshot) => {
     callback(snapshot.size);
   });
@@ -120,10 +144,10 @@ export const getPingsBetweenUsers = async (
     where('timestamp', '>=', since),
     orderBy('timestamp', 'desc')
   );
-  
+
   const snapshot = await getDocs(q);
   const pings: Ping[] = [];
-  
+
   snapshot.forEach((doc) => {
     const data = doc.data();
     if (
@@ -133,7 +157,7 @@ export const getPingsBetweenUsers = async (
       pings.push({ id: doc.id, ...data } as Ping);
     }
   });
-  
+
   return pings;
 };
 
@@ -144,7 +168,7 @@ export const createFriendship = async (
 ): Promise<void> => {
   const friendshipId = [userId, friendId].sort().join('_');
   const friendshipRef = doc(db, FRIENDSHIPS_COLLECTION, friendshipId);
-  
+
   await setDoc(friendshipRef, {
     userId,
     friendId,
@@ -161,12 +185,12 @@ export const getFriendships = async (userId: string): Promise<string[]> => {
     collection(db, FRIENDSHIPS_COLLECTION),
     where('friendId', '==', userId)
   );
-  
+
   const [snapshot1, snapshot2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-  
+
   const friendIds = new Set<string>();
   snapshot1.forEach((doc) => friendIds.add(doc.data().friendId));
   snapshot2.forEach((doc) => friendIds.add(doc.data().userId));
-  
+
   return Array.from(friendIds);
 };

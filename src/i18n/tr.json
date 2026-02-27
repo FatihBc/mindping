@@ -30,7 +30,6 @@
   "resetData": "Verileri Sıfırla",
   "resetConfirm": "Tüm verileriniz silinecek. Bu işlem geri alınamaz.",
   "cancel": "İptal",
-  "language": "Dil",
   "selectLanguage": "Dil Seçin",
   "loading": "Yükleniyor...",
   "back": "Geri",
@@ -51,5 +50,13 @@
   "grantPermission": "İzin Ver",
   "manualAddNotAvailable": "Manuel ekleme demo modunda çalışmıyor",
   "added": "eklendi",
-  "cannotAddYourself": "Kendinizi arkadaş olarak ekleyemezsiniz"
+  "cannotAddYourself": "Kendinizi arkadaş olarak ekleyemezsiniz",
+  "language": "Dil",
+  "theme": "Tema",
+  "deleteAccount": "Hesabı Sil",
+  "logout": "Çıkış Yap",
+  "userCode": "Kullanıcı Kodu",
+  "system": "Sistem",
+  "light": "Açık",
+  "dark": "Koyu"
 }

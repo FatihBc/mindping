@@ -5,5 +5,23 @@
 expo-env.d.ts
 # @end expo-cli
 
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+.expo-shared/
+
 # Firebase Admin SDK private key - keep this secret!
 serviceAccountKey.json
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+.env.local

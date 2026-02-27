@@ -30,7 +30,6 @@
   "resetData": "Reset Data",
   "resetConfirm": "All data will be deleted. This cannot be undone.",
   "cancel": "Cancel",
-  "language": "Language",
   "selectLanguage": "Select Language",
   "loading": "Loading...",
   "back": "Back",
@@ -51,5 +50,13 @@
   "grantPermission": "Grant Permission",
   "manualAddNotAvailable": "Manual add not available in demo mode",
   "added": "added",
-  "cannotAddYourself": "You cannot add yourself as a friend"
+  "cannotAddYourself": "You cannot add yourself as a friend",
+  "language": "Language",
+  "theme": "Theme",
+  "deleteAccount": "Delete Account",
+  "logout": "Logout",
+  "userCode": "User Code",
+  "system": "System",
+  "light": "Light",
+  "dark": "Dark"
 }

@@ -5,6 +5,7 @@ import {
   sendPing as sendPingToFirebase,
   createFriendship,
   getUserByUsername,
+  getUserByFriendCode,
 } from './firebase-db';
 
 const KEYS = {
@@ -73,6 +74,11 @@ export const updateFriend = async (friendId: string, updates: Partial<Friend>): 
     f.id === friendId ? { ...f, ...updates } : f
   );
   await AsyncStorage.setItem(KEYS.FRIENDS, JSON.stringify(updated));
+};
+
+// Update all friends (for reordering)
+export const updateFriends = async (friends: Friend[]): Promise<void> => {
+  await AsyncStorage.setItem(KEYS.FRIENDS, JSON.stringify(friends));
 };
 
 // Pings
@@ -144,7 +150,25 @@ export const getFriendStats = async (friendId: string): Promise<FriendStats> => 
   };
 };
 
-// Helper
+// Get total stats (all time)
+export const getTotalStats = async (): Promise<{ sent: number; received: number }> => {
+  const keys = await AsyncStorage.getAllKeys();
+  const statsKeys = keys.filter(k => k.startsWith(KEYS.STATS));
+
+  let totalSent = 0;
+  let totalReceived = 0;
+
+  for (const key of statsKeys) {
+    const data = await AsyncStorage.getItem(key);
+    if (data) {
+      const stats = JSON.parse(data);
+      totalSent += stats.sent || 0;
+      totalReceived += stats.received || 0;
+    }
+  }
+
+  return { sent: totalSent, received: totalReceived };
+};
 export const clearAllData = async (): Promise<void> => {
   const keys = await AsyncStorage.getAllKeys();
   await AsyncStorage.multiRemove(keys);
@@ -160,14 +184,26 @@ export const findUserByUsername = async (username: string): Promise<User | null>
   }
 };
 
+// Find user by friend code from Firebase
+export const findUserByFriendCode = async (friendCode: string): Promise<User | null> => {
+  try {
+    return await getUserByFriendCode(friendCode.toUpperCase());
+  } catch (error) {
+    console.warn('Failed to find user by friend code:', error);
+    return null;
+  }
+};
+
 // Send ping with Firebase sync
 export const sendPingWithFirebase = async (
   senderId: string,
   receiverId: string
 ): Promise<string | null> => {
+  console.log('Sending ping:', { senderId, receiverId });
   try {
     // Send to Firebase
     const pingId = await sendPingToFirebase(senderId, receiverId);
+    console.log('Ping sent to Firebase, ID:', pingId);
 
     // Also save locally
     const ping: Ping = {
@@ -181,7 +217,7 @@ export const sendPingWithFirebase = async (
 
     return pingId;
   } catch (error) {
-    console.warn('Failed to send ping to Firebase:', error);
+    console.error('Failed to send ping to Firebase:', error);
     // Fallback to local only
     const ping: Ping = {
       id: Math.random().toString(36).substring(2) + Date.now().toString(36),

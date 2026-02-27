@@ -1,294 +1,409 @@
 import { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { Text, Button, Surface } from 'react-native-paper';
+import { Text, Surface, IconButton } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import {
   getFriends,
   getPingsBetweenUsers,
-  getDailyStats,
-} from '@/services/storage';
-import { Avatar } from '@/components/Avatar';
-import type { Friend, Ping } from '@/types/index';
+  getCurrentUser,
+} from '../../src/services/storage';
+import { Avatar } from '../../src/components/Avatar';
+import { colors } from '../../src/theme/colors';
+import { useTheme } from '../../src/context/ThemeContext';
+import type { Friend, Ping } from '../../src/types/index';
 import '../../src/i18n';
 
-// Simple Bar Component
-const SimpleBar = ({ value, maxValue, color, label }: { value: number; maxValue: number; color: string; label: string }) => {
-  const height = maxValue > 0 ? (value / maxValue) * 100 : 0;
-  return (
-    <View style={styles.barContainer}>
-      <View style={[styles.barBackground, { height: 100 }]}>
-        <View style={[styles.barFill, { height, backgroundColor: color }]} />
-      </View>
-      <Text style={styles.barValue}>{value > 0 ? value : ''}</Text>
-      <Text style={styles.barLabel}>{label}</Text>
-    </View>
-  );
-};
+interface HourlyPing {
+  hour: number;
+  sent: Ping[];
+  received: Ping[];
+}
 
 interface DayStats {
   day: string;
+  date: string;
   sent: number;
   received: number;
 }
 
-export default function FriendStatsScreen() {
+export default function FriendDetailScreen() {
   const { t, i18n } = useTranslation();
+  const { theme, isDark } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [friend, setFriend] = useState<Friend | null>(null);
-  const [stats, setStats] = useState<DayStats[]>([]);
-  const [totalSent, setTotalSent] = useState(0);
-  const [totalReceived, setTotalReceived] = useState(0);
+  const [todaySent, setTodaySent] = useState(0);
+  const [todayReceived, setTodayReceived] = useState(0);
+  const [hourlyPings, setHourlyPings] = useState<HourlyPing[]>([]);
+  const [weekStats, setWeekStats] = useState<DayStats[]>([]);
 
   useEffect(() => {
-    const loadFriend = async () => {
-      const friends = await getFriends();
-      const found = friends.find((f: Friend) => f.id === id);
-      if (found) {
-        setFriend(found);
-        await loadStats(found.id);
-      }
-    };
-    loadFriend();
+    loadData();
   }, [id]);
 
-  const loadStats = async (friendId: string) => {
+  const loadData = async () => {
+    const friends = await getFriends();
+    const found = friends.find((f: Friend) => f.id === id);
+    if (found) {
+      setFriend(found);
+      await loadTodayStats(found.id);
+      await loadWeekStats(found.id);
+    }
+  };
+
+  const loadTodayStats = async (friendId: string) => {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) return;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStart = today.getTime();
+    const todayEnd = todayStart + 24 * 60 * 60 * 1000;
+
+    const pings = await getPingsBetweenUsers(currentUser.id, friendId, todayStart);
+
+    const todayPings = pings.filter(
+      (p: Ping) => p.timestamp >= todayStart && p.timestamp < todayEnd
+    );
+
+    const sent = todayPings.filter((p: Ping) => p.senderId === currentUser.id);
+    const received = todayPings.filter((p: Ping) => p.receiverId === currentUser.id);
+
+    setTodaySent(sent.length);
+    setTodayReceived(received.length);
+
+    // Group by hour
+    const hourlyData: HourlyPing[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const hourStart = todayStart + hour * 60 * 60 * 1000;
+      const hourEnd = hourStart + 60 * 60 * 1000;
+
+      const hourSent = sent.filter(
+        (p: Ping) => p.timestamp >= hourStart && p.timestamp < hourEnd
+      );
+      const hourReceived = received.filter(
+        (p: Ping) => p.timestamp >= hourStart && p.timestamp < hourEnd
+      );
+
+      hourlyData.push({
+        hour,
+        sent: hourSent,
+        received: hourReceived,
+      });
+    }
+
+    setHourlyPings(hourlyData);
+  };
+
+  const loadWeekStats = async (friendId: string) => {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) return;
+
     const days: DayStats[] = [];
     const today = new Date();
-    let sentTotal = 0;
-    let receivedTotal = 0;
 
     for (let i = 6; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
+      date.setHours(0, 0, 0, 0);
+      const dayStart = date.getTime();
+      const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+
+      const dateStr = date.toLocaleDateString(i18n.language, { 
+        month: 'short', 
+        day: 'numeric' 
+      });
       const dayName = date.toLocaleDateString(i18n.language, { weekday: 'short' });
 
-      // Get stats from storage
-      const dailyStats = await getDailyStats(dateStr);
+      const pings = await getPingsBetweenUsers(currentUser.id, friendId, dayStart);
+      const dayPings = pings.filter(
+        (p: Ping) => p.timestamp >= dayStart && p.timestamp < dayEnd
+      );
 
-      // Get pings between users
-      const dayStart = new Date(dateStr).getTime();
-      const dayEnd = dayStart + 24 * 60 * 60 * 1000;
-      const pings = await getPingsBetweenUsers('self', friendId, dayStart);
-
-      const daySent = pings.filter(
-        (p: Ping) => p.senderId === 'self' && p.timestamp >= dayStart && p.timestamp < dayEnd
-      ).length;
-      const dayReceived = pings.filter(
-        (p: Ping) => p.receiverId === 'self' && p.timestamp >= dayStart && p.timestamp < dayEnd
-      ).length;
+      const daySent = dayPings.filter((p: Ping) => p.senderId === currentUser.id).length;
+      const dayReceived = dayPings.filter((p: Ping) => p.receiverId === currentUser.id).length;
 
       days.push({
         day: dayName,
+        date: dateStr,
         sent: daySent,
         received: dayReceived,
       });
-
-      sentTotal += daySent;
-      receivedTotal += dayReceived;
     }
 
-    setStats(days);
-    setTotalSent(sentTotal);
-    setTotalReceived(receivedTotal);
+    setWeekStats(days);
   };
-
-  const barData = stats.map((s) => ({
-    label: s.day,
-    value: s.sent,
-    frontColor: '#6366f1',
-    topLabelComponent: () => (
-      <Text style={styles.barLabel}>{s.sent > 0 ? s.sent : ''}</Text>
-    ),
-  }));
-
-  const receivedBarData = stats.map((s) => ({
-    label: s.day,
-    value: s.received,
-    frontColor: '#10b981',
-    topLabelComponent: () => (
-      <Text style={styles.barLabel}>{s.received > 0 ? s.received : ''}</Text>
-    ),
-  }));
 
   if (!friend) {
     return (
-      <View style={styles.container}>
-        <Text>{t('friendNotFound')}</Text>
-        <Button onPress={() => router.back()}>{t('back')}</Button>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <Text style={{ color: theme.text }}>{t('loading')}</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <Surface style={styles.header} elevation={2}>
-        <Avatar
-          username={friend.username}
-          style={friend.avatarStyle}
-          size={64}
-        />
-        <Text variant="headlineSmall" style={styles.name}>
-          {friend.displayName}
-        </Text>
-        <Text variant="bodyMedium" style={styles.username}>
-          @{friend.username}
-        </Text>
-      </Surface>
-
-      <Surface style={styles.statsCard} elevation={1}>
-        <Text variant="titleMedium" style={styles.statsTitle}>
-          {t('last7Days')}
-        </Text>
-        <View style={styles.totalsRow}>
-          <View style={styles.totalBox}>
-            <Text variant="headlineMedium" style={styles.totalSent}>
-              {totalSent}
-            </Text>
-            <Text variant="bodySmall">{t('sent')}</Text>
-          </View>
-          <View style={styles.totalBox}>
-            <Text variant="headlineMedium" style={styles.totalReceived}>
-              {totalReceived}
-            </Text>
-            <Text variant="bodySmall">{t('received')}</Text>
-          </View>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Bordo header */}
+      <Surface style={[styles.headerCard, { backgroundColor: colors.primary[800] }]} elevation={2}>
+        <View style={styles.headerRow}>
+          <IconButton
+            icon="arrow-left"
+            onPress={() => router.back()}
+            iconColor="white"
+            size={24}
+            style={styles.backButton}
+          />
+          <Text variant="titleLarge" style={styles.headerTitle}>
+            {friend.displayName}
+          </Text>
         </View>
       </Surface>
 
-      {stats.some((s) => s.sent > 0) && (
-        <Surface style={styles.chartCard} elevation={1}>
-          <Text variant="bodyMedium" style={styles.chartLabel}>
-            {t('sent')} {t('ping')}
-          </Text>
-          <View style={styles.chartContainer}>
-            {stats.map((s, i) => (
-              <SimpleBar
-                key={i}
-                value={s.sent}
-                maxValue={Math.max(...stats.map((st) => st.sent), 5)}
-                color="#6366f1"
-                label={s.day}
-              />
-            ))}
+      <ScrollView style={styles.scrollContent}>
+        {/* Avatar and Ping Button */}
+        <Surface style={[styles.actionCard, { backgroundColor: theme.card }]} elevation={1}>
+          <Avatar username={friend.username} style={friend.avatarStyle} size={80} />
+          <IconButton
+            icon="send"
+            size={32}
+            onPress={() => router.push(`/ping/${friend.id}`)}
+            iconColor={isDark ? '#da0000' : '#780000'}
+            style={styles.pingButton}
+          />
+        </Surface>
+
+        {/* Today's Stats and 24-Hour Timeline */}
+        <Surface style={[styles.timelineCard, { backgroundColor: theme.card }]} elevation={1}>
+          <View style={styles.todayStatsRow}>
+            <View style={styles.statBox}>
+              <Text variant="headlineMedium" style={{ color: isDark ? '#da0000' : '#780000' }}>
+                {todaySent}
+              </Text>
+              <Text variant="bodySmall" style={{ color: theme.textSecondary }}>
+                Gönderilen
+              </Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text variant="headlineMedium" style={{ color: '#3b82f6' }}>
+                {todayReceived}
+              </Text>
+              <Text variant="bodySmall" style={{ color: theme.textSecondary }}>
+                Alınan
+              </Text>
+            </View>
+          </View>
+
+          {/* 24-Hour Timeline */}
+          <View style={styles.timelineContainer}>
+            {/* Sent pings row (top) */}
+            <View style={styles.pingsRow}>
+              {hourlyPings.map((hourData) => (
+                <View key={`sent-${hourData.hour}`} style={styles.hourColumn}>
+                  {hourData.sent.map((ping, idx) => (
+                    <Text key={`s-${idx}`} style={styles.sentArrow}>
+                      ↑
+                    </Text>
+                  ))}
+                </View>
+              ))}
+            </View>
+
+            {/* Timeline line */}
+            <View style={[styles.timelineLine, { backgroundColor: theme.border }]} />
+
+            {/* Received pings row (bottom) */}
+            <View style={styles.pingsRow}>
+              {hourlyPings.map((hourData) => (
+                <View key={`received-${hourData.hour}`} style={styles.hourColumn}>
+                  {hourData.received.map((ping, idx) => (
+                    <Text key={`r-${idx}`} style={styles.receivedArrow}>
+                      ↓
+                    </Text>
+                  ))}
+                </View>
+              ))}
+            </View>
+
+            {/* Hour labels */}
+            <View style={styles.hoursRow}>
+              {Array.from({ length: 24 }, (_, i) => (
+                <Text
+                  key={i}
+                  style={[
+                    styles.hourLabel,
+                    { color: theme.textMuted },
+                    i % 3 !== 0 && styles.hourLabelHidden,
+                  ]}
+                >
+                  {i % 3 === 0 ? i : ''}
+                </Text>
+              ))}
+            </View>
           </View>
         </Surface>
-      )}
 
-      {stats.some((s) => s.received > 0) && (
-        <Surface style={styles.chartCard} elevation={1}>
-          <Text variant="bodyMedium" style={styles.chartLabel}>
-            {t('received')} {t('ping')}
+        {/* Last 7 Days Stats */}
+        <Surface style={[styles.weekCard, { backgroundColor: theme.card }]} elevation={1}>
+          <Text variant="titleMedium" style={[styles.weekTitle, { color: theme.text }]}>
+            Son 7 Gün
           </Text>
-          <View style={styles.chartContainer}>
-            {stats.map((s, i) => (
-              <SimpleBar
-                key={i}
-                value={s.received}
-                maxValue={Math.max(...stats.map((st) => st.received), 5)}
-                color="#10b981"
-                label={s.day}
-              />
-            ))}
-          </View>
+          {weekStats.map((day, index) => (
+            <View key={index} style={[styles.dayRow, { borderBottomColor: theme.border }]}>
+              <View style={styles.dayInfo}>
+                <Text variant="bodyMedium" style={{ color: theme.text }}>
+                  {day.day}
+                </Text>
+                <Text variant="bodySmall" style={{ color: theme.textSecondary }}>
+                  {day.date}
+                </Text>
+              </View>
+              <View style={styles.dayStats}>
+                <View style={styles.dayStat}>
+                  <Text style={{ color: isDark ? '#da0000' : '#780000', fontSize: 16, fontWeight: '600' }}>
+                    {day.sent}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: theme.textSecondary }}>
+                    Gönderilen
+                  </Text>
+                </View>
+                <View style={styles.dayStat}>
+                  <Text style={{ color: '#3b82f6', fontSize: 16, fontWeight: '600' }}>
+                    {day.received}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: theme.textSecondary }}>
+                    Alınan
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ))}
         </Surface>
-      )}
-
-      <Button onPress={() => router.back()} style={styles.backButton}>
-        {t('back')}
-      </Button>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
-  header: {
+  headerCard: {
+    paddingTop: 60,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  backButton: {
+    position: 'absolute',
+    left: 0,
+  },
+  headerTitle: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 20,
+  },
+  scrollContent: {
+    flex: 1,
+    padding: 16,
+  },
+  actionCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     padding: 24,
-    margin: 16,
     borderRadius: 16,
+    marginBottom: 16,
   },
-  name: {
-    marginTop: 12,
-    marginBottom: 4,
+  pingButton: {
+    margin: 0,
   },
-  username: {
-    opacity: 0.6,
-  },
-  statsCard: {
-    margin: 16,
+  timelineCard: {
     padding: 20,
     borderRadius: 16,
+    marginBottom: 16,
   },
-  statsTitle: {
+  todayStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 24,
+  },
+  statBox: {
+    alignItems: 'center',
+  },
+  timelineContainer: {
+    marginTop: 8,
+  },
+  pingsRow: {
+    flexDirection: 'row',
+    height: 30,
+    justifyContent: 'space-between',
+  },
+  hourColumn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sentArrow: {
+    color: '#ef4444',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  receivedArrow: {
+    color: '#3b82f6',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  timelineLine: {
+    height: 2,
+    marginVertical: 4,
+  },
+  hoursRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  hourLabel: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 10,
+  },
+  hourLabelHidden: {
+    opacity: 0,
+  },
+  weekCard: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  weekTitle: {
+    fontWeight: '600',
     marginBottom: 16,
     textAlign: 'center',
   },
-  totalsRow: {
+  dayRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  totalBox: {
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
   },
-  totalSent: {
-    color: '#6366f1',
+  dayInfo: {
+    flex: 1,
   },
-  totalReceived: {
-    color: '#10b981',
-  },
-  chartCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  chartLabel: {
-    marginBottom: 12,
-    opacity: 0.7,
-  },
-  axisLabel: {
-    fontSize: 10,
-    opacity: 0.6,
-  },
-  barLabel: {
-    fontSize: 10,
-    color: '#666',
-  },
-  chartContainer: {
+  dayStats: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'flex-end',
-    height: 150,
-    paddingTop: 20,
+    gap: 24,
   },
-  barContainer: {
+  dayStat: {
     alignItems: 'center',
-    width: 30,
-  },
-  barBackground: {
-    width: 20,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 4,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  barFill: {
-    width: '100%',
-    borderRadius: 4,
-  },
-  barValue: {
-    fontSize: 10,
-    marginTop: 4,
-    color: '#666',
-  },
-  backButton: {
-    margin: 16,
+    minWidth: 60,
   },
 });

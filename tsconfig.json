@@ -26,6 +26,12 @@
       ],
       "@/utils/*": [
         "./src/utils/*"
+      ],
+      "@/theme/*": [
+        "./src/theme/*"
+      ],
+      "@/context/*": [
+        "./src/context/*"
       ]
     }
   },

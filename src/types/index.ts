@@ -1,6 +1,7 @@
 export interface User {
   id: string;
   username: string;
+  friendCode: string;  // Unique code for adding friends
   displayName: string;
   avatarStyle?: string;
   avatarSeed?: string;
@@ -11,6 +12,7 @@ export interface User {
 export interface Friend {
   id: string;
   username: string;
+  friendCode: string;
   displayName: string;
   avatarStyle?: string;
   avatarSeed?: string;

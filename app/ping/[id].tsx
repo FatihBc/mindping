@@ -34,28 +34,33 @@ export default function PingScreen() {
     setSending(true);
     Vibration.vibrate(100);
 
-    // Get current user
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
+    try {
+      // Get current user
+      const currentUser = await getCurrentUser();
+      if (!currentUser) {
+        setSending(false);
+        return;
+      }
+
+      // Send ping via Firebase
+      await sendPingWithFirebase(currentUser.id, friend.id);
+
+      // Update daily stats locally
+      const today = new Date().toISOString().split('T')[0];
+      await incrementSentPings(today);
+
+      // Show local notification
+      await sendLocalNotification(
+        t('thinkingOfYou'),
+        `${t('pingSentTo')} ${friend.displayName}`
+      );
+
+      setLastPing(Date.now());
+    } catch (error) {
+      console.error('Failed to send ping:', error);
+    } finally {
       setSending(false);
-      return;
     }
-
-    // Send ping via Firebase
-    await sendPingWithFirebase(currentUser.id, friend.id);
-
-    // Update daily stats locally
-    const today = new Date().toISOString().split('T')[0];
-    await incrementSentPings(today);
-
-    // Show local notification
-    await sendLocalNotification(
-      t('thinkingOfYou'),
-      `${t('pingSentTo')} ${friend.displayName}`
-    );
-
-    setLastPing(Date.now());
-    setSending(false);
   };
 
   if (!friend) {
