@@ -38,15 +38,19 @@
       "bundleIdentifier": "com.mindping.app",
       "infoPlist": {
         "UIBackgroundModes": [
+          "remote-notification",
           "remote-notification"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "com.mindping.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#6366f1"
+      },
       "permissions": [
-        "CAMERA",
-        "NOTIFICATIONS",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ]
